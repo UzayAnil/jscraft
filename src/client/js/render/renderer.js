@@ -3,6 +3,7 @@ import { mat4 } from 'gl-matrix';
 import { FS_SOURCE, VS_SOURCE } from './shaders';
 import { POSITIONS, INDICES, TEXTURE_COORDINATES, VERTEX_NORMALS } from './block';
 import loadTexture from './texture';
+import { createBufferFromArray, setAttribute, loadShader } from './utils';
 
 export default class Renderer {
   constructor(canvas) {
@@ -16,14 +17,14 @@ export default class Renderer {
     const gl = this.getContext(canvas);
 
     if (!gl) {
-      console.error("Your browser does not support WebGL! Please consider updating!");
+      console.error("Your browser does not support WebGL. Please consider updating!");
       return;
     }
 
-    this.resizeCanvas(window.innerWidth, window.innerHeight, gl);
+    this.resizeCanvas(gl);
 
     window.addEventListener('resize', () => {
-      this.resizeCanvas(window.innerWidth, window.innerHeight, gl);
+      this.resizeCanvas(gl);
     });
 
     const shaderProgram = this.initializeShaderProgram(gl);
@@ -63,10 +64,10 @@ export default class Renderer {
     requestAnimationFrame(render.bind(this));
   }
 
-  resizeCanvas(width, height, gl) {
-    this.width = gl.canvas.width = width;
-    this.height = gl.canvas.height = height;
-    gl.viewport(0, 0, width, height);
+  resizeCanvas(gl) {
+    this.width = gl.canvas.width = gl.canvas.clientWidth;
+    this.height = gl.canvas.height = gl.canvas.clientHeight;
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
   }
 
   getContext(canvas) {
@@ -77,8 +78,8 @@ export default class Renderer {
   }
 
   initializeShaderProgram(gl) {
-    const vertexShader = this.loadShader(gl, gl.VERTEX_SHADER, VS_SOURCE);
-    const fragmentShader = this.loadShader(gl, gl.FRAGMENT_SHADER, FS_SOURCE);
+    const vertexShader = loadShader(gl, gl.VERTEX_SHADER, VS_SOURCE);
+    const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, FS_SOURCE);
 
     const shaderProgram = gl.createProgram();
 
@@ -94,60 +95,12 @@ export default class Renderer {
     return shaderProgram;
   }
 
-  loadShader(gl, type, source) {
-    const shader = gl.createShader(type);
-
-    gl.shaderSource(shader, source);
-
-    gl.compileShader(shader);
-
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      console.error(`An error occured when compiling shaders: ${ gl.getShaderInfoLog(shader) }`);
-      gl.deleteShader(shader);
-      return null;
-    }
-
-    return shader;
-  }
-
   initializeBuffers(gl) {
-    const positionBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array(POSITIONS),
-      gl.STATIC_DRAW
-    );
-
-    const indexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-    gl.bufferData(
-      gl.ELEMENT_ARRAY_BUFFER,
-      new Uint16Array(INDICES),
-      gl.STATIC_DRAW
-    );
-
-    const textureCoordBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, textureCoordBuffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array(TEXTURE_COORDINATES),
-      gl.STATIC_DRAW
-    );
-
-    const normalBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array(VERTEX_NORMALS),
-      gl.STATIC_DRAW
-    );
-
     return {
-      position: positionBuffer,
-      normal: normalBuffer,
-      textureCoord: textureCoordBuffer,
-      indices: indexBuffer
+      position: createBufferFromArray(gl, new Float32Array(POSITIONS)),
+      normal: createBufferFromArray(gl, new Uint16Array(INDICES), gl.ELEMENT_ARRAY_BUFFER),
+      textureCoord: createBufferFromArray(gl, new Float32Array(TEXTURE_COORDINATES)),
+      indices: createBufferFromArray(gl, new Float32Array(VERTEX_NORMALS))
     };
   }
 
@@ -159,66 +112,29 @@ export default class Renderer {
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    {
-      const numComponents = 3;
-      const type = gl.FLOAT;
-      const normalize = false;
-      const stride = 0;
-      const offset = 0;
+    setAttribute(
+      gl,
+      3,
+      gl.FLOAT,
+      buffers.position,
+      programInfo.attribLocations.vertexPosition
+    );
 
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
-      gl.vertexAttribPointer(
-        programInfo.attribLocations.vertexPosition,
-        numComponents,
-        type,
-        normalize,
-        stride,
-        offset
-      );
-      gl.enableVertexAttribArray(
-        programInfo.attribLocations.vertexPosition
-      );
-    }
+    setAttribute(
+      gl,
+      3,
+      gl.FLOAT,
+      buffers.normal,
+      programInfo.attribLocations.vertexNormal
+    );
 
-    {
-      const numComponents = 3;
-      const type = gl.FLOAT;
-      const normalize = false;
-      const stride = 0;
-      const offset = 0;
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.normal);
-      gl.vertexAttribPointer(
-        programInfo.attribLocations.vertexNormal,
-        numComponents,
-        type,
-        normalize,
-        stride,
-        offset
-      );
-      gl.enableVertexAttribArray(
-        programInfo.attribLocations.vertexNormal
-      );
-    }
-
-    {
-      const numComponents = 2;
-      const type = gl.FLOAT;
-      const normalize = false;
-      const stride = 0;
-      const offset = 0;
-      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.textureCoord);
-      gl.vertexAttribPointer(
-        programInfo.attribLocations.textureCoord,
-        numComponents,
-        type,
-        normalize,
-        stride,
-        offset
-      );
-      gl.enableVertexAttribArray(
-        programInfo.attribLocations.textureCoord
-      );
-    }
+    setAttribute(
+      gl,
+      2,
+      gl.FLOAT,
+      buffers.textureCoord,
+      programInfo.attribLocations.textureCoord
+    );
 
     gl.useProgram(programInfo.program);
 
@@ -229,7 +145,7 @@ export default class Renderer {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
 
     const fieldOfView = 45 * Math.PI / 180;
-    const aspect = this.width / this.height;
+    const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
     const zNear = 0.1;
     const zFar = 100.0;
     const projectionMatrix = mat4.create();
