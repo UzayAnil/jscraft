@@ -4,11 +4,41 @@ import { FS_SOURCE, VS_SOURCE } from './shaders';
 import { POSITIONS, INDICES, TEXTURE_COORDINATES, VERTEX_NORMALS } from './block';
 import loadTexture from './texture';
 import { createBufferFromArray, setAttribute, loadShader } from './utils';
+import Camera from './camera';
 
 export default class Renderer {
-  constructor(canvas) {
-    this.rotation = 0.0;
+  constructor(canvas, camera) {
+    this.camera = camera;
 
+    this.gl = this.initializeGL(canvas);
+
+    this.resizeCanvas(this.gl);
+
+    window.addEventListener('resize', () => {
+      this.resizeCanvas(this.gl);
+    });
+
+    this.shaderProgram = this.initializeShaderProgram(this.gl);
+    this.programInfo = {
+      program: this.shaderProgram,
+      attribLocations: {
+        vertexPosition: this.gl.getAttribLocation(this.shaderProgram, 'aVertexPosition'),
+        vertexNormal: this.gl.getAttribLocation(this.shaderProgram, 'aVertexNormal'),
+        textureCoord: this.gl.getAttribLocation(this.shaderProgram, 'aTextureCoord')
+      },
+      uniformLocations: {
+        projectionMatrix: this.gl.getUniformLocation(this.shaderProgram, 'uProjectionMatrix'),
+        normalMatrix: this.gl.getUniformLocation(this.shaderProgram, 'uNormalMatrix'),
+        modelViewMatrix: this.gl.getUniformLocation(this.shaderProgram, 'uModelViewMatrix'),
+        uSampler: this.gl.getUniformLocation(this.shaderProgram, 'uSampler')
+      }
+    };
+    this.buffers = this.initializeBuffers(this.gl);
+
+    this.texture = loadTexture(this.gl, "img/stone.png");
+  }
+
+  initializeGL(canvas) {
     if (!window.WebGLRenderingContext) {
       console.error("Your browser has WebGL disabled. Please consider enabling it!");
       return;
@@ -21,51 +51,11 @@ export default class Renderer {
       return;
     }
 
-    this.resizeCanvas(gl);
-
-    window.addEventListener('resize', () => {
-      this.resizeCanvas(gl);
-    });
-
-    const shaderProgram = this.initializeShaderProgram(gl);
-    const programInfo = {
-      program: shaderProgram,
-      attribLocations: {
-        vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
-        vertexNormal: gl.getAttribLocation(shaderProgram, 'aVertexNormal'),
-        textureCoord: gl.getAttribLocation(shaderProgram, 'aTextureCoord')
-      },
-      uniformLocations: {
-        projectionMatrix: gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
-        normalMatrix: gl.getUniformLocation(shaderProgram, 'uNormalMatrix'),
-        modelViewMatrix: gl.getUniformLocation(shaderProgram, 'uModelViewMatrix'),
-        uSampler: gl.getUniformLocation(shaderProgram, 'uSampler')
-      }
-    };
-    const buffers = this.initializeBuffers(gl);
-
-    const texture = loadTexture(gl, "img/stone.png");
-
-    const self = this;
-    let then = 0;
-
-    function render(now) {
-      now *= 0.001;
-      const deltaTime = now - then;
-      then = now;
-
-      this.rotation += deltaTime * 1;
-
-      this.drawScene(gl, programInfo, buffers, texture);
-
-      requestAnimationFrame(render.bind(self));
-    }
-
-    requestAnimationFrame(render.bind(this));
+    return gl;
   }
 
   resizeCanvas(gl) {
-    this.width = gl.canvas.width = gl.canvas.clientWidth;
+    this.width = gl.canvas.width = this.gl.canvas.clientWidth;
     this.height = gl.canvas.height = gl.canvas.clientHeight;
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
   }
@@ -87,7 +77,7 @@ export default class Renderer {
     gl.attachShader(shaderProgram, fragmentShader);
     gl.linkProgram(shaderProgram);
 
-    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+    if (!this.gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
       console.error(`Unable to initialize the shader program: ${ gl.getProgramInfoLog(shaderProgram) }`);
       return null;
     }
@@ -104,48 +94,49 @@ export default class Renderer {
     };
   }
 
-  drawScene(gl, programInfo, buffers, texture) {
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    gl.clearDepth(1.0);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LEQUAL);
+  drawScene() {
+    this.gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    this.gl.clearDepth(1.0);
+    this.gl.enable(this.gl.DEPTH_TEST);
+    this.gl.depthFunc(this.gl.LEQUAL);
 
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
 
     setAttribute(
-      gl,
+      this.gl,
       3,
-      gl.FLOAT,
-      buffers.position,
-      programInfo.attribLocations.vertexPosition
+      this.gl.FLOAT,
+      this.buffers.position,
+      this.programInfo.attribLocations.vertexPosition
     );
 
     setAttribute(
-      gl,
+      this.gl,
       3,
-      gl.FLOAT,
-      buffers.normal,
-      programInfo.attribLocations.vertexNormal
+      this.gl.FLOAT,
+      this.buffers.normal,
+      this.programInfo.attribLocations.vertexNormal,
+      this.gl.ELEMENT_ARRAY_BUFFER
     );
 
     setAttribute(
-      gl,
+      this.gl,
       2,
-      gl.FLOAT,
-      buffers.textureCoord,
-      programInfo.attribLocations.textureCoord
+      this.gl.FLOAT,
+      this.buffers.textureCoord,
+      this.programInfo.attribLocations.textureCoord
     );
 
-    gl.useProgram(programInfo.program);
+    this.gl.useProgram(this.programInfo.program);
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.uniform1i(programInfo.uniformLocations.uSampler, 0);
+    this.gl.activeTexture(this.gl.TEXTURE0);
+    this.gl.bindTexture(this.gl.TEXTURE_2D, this.texture);
+    this.gl.uniform1i(this.programInfo.uniformLocations.uSampler, 0);
 
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
+    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.buffers.indices);
 
     const fieldOfView = 45 * Math.PI / 180;
-    const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+    const aspect = this.gl.canvas.clientWidth / this.gl.canvas.clientHeight;
     const zNear = 0.1;
     const zFar = 100.0;
     const projectionMatrix = mat4.create();
@@ -160,47 +151,36 @@ export default class Renderer {
 
     const modelViewMatrix = mat4.create();
 
-    mat4.translate(
-      modelViewMatrix,
-      modelViewMatrix,
-      [-0.0, 0.0, -6.0]
-    );
-
-    mat4.rotate(
-      modelViewMatrix,
-      modelViewMatrix,
-      this.rotation,
-      [0, 1, 1]
-    );
+    this.camera.modifyModelViewMatrix(modelViewMatrix);
 
     const normalMatrix = mat4.create();
     mat4.invert(normalMatrix, modelViewMatrix);
     mat4.transpose(normalMatrix, normalMatrix);
 
-    gl.uniformMatrix4fv(
-      programInfo.uniformLocations.projectionMatrix,
+    this.gl.uniformMatrix4fv(
+      this.programInfo.uniformLocations.projectionMatrix,
       false,
       projectionMatrix
     );
 
-    gl.uniformMatrix4fv(
-      programInfo.uniformLocations.modelViewMatrix,
+    this.gl.uniformMatrix4fv(
+      this.programInfo.uniformLocations.modelViewMatrix,
       false,
       modelViewMatrix
     );
 
 
-    gl.uniformMatrix4fv(
-      programInfo.uniformLocations.normalMatrix,
+    this.gl.uniformMatrix4fv(
+      this.programInfo.uniformLocations.normalMatrix,
       false,
       normalMatrix
     );
 
     {
       const vertexCount = 36;
-      const type = gl.UNSIGNED_SHORT;
+      const type = this.gl.UNSIGNED_SHORT;
       const offset = 0;
-      gl.drawElements(gl.TRIANGLES, vertexCount, type, offset);
+      this.gl.drawElements(this.gl.TRIANGLES, vertexCount, type, offset);
     }
   }
 }

@@ -9,8 +9,8 @@ export function createBufferFromArray(gl, array, type, drawType) {
   return buffer;
 }
 
-export function setAttribute(gl, numComponents, type, buffer, attribLocation, normalize = false, stride = 0, offset = 0) {
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+export function setAttribute(gl, numComponents, type, buffer, attribLocation, bufferType = gl.ARRAY_BUFFER, normalize = false, stride = 0, offset = 0) {
+  gl.bindBuffer(bufferType, buffer);
   gl.vertexAttribPointer(
     attribLocation,
     numComponents,
